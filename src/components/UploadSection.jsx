@@ -43,7 +43,7 @@ export default function UploadSection({ onTextExtracted, isProcessing }) {
             }
 
             setExtractionStatus(`Extracted ${text.length.toLocaleString()} characters`);
-            onTextExtracted(text, file.name);
+            onTextExtracted(text, file.name, file);
         } catch (err) {
             console.error('PDF extraction error:', err);
             setError('Failed to read PDF. Please try another file.');

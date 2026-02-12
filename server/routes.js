@@ -1,21 +1,27 @@
 /**
- * routes.js
- * ─────────
- * API route definitions for the PDF-to-Speech backend.
+ * routes.js — V2
+ * ───────────────
+ * API route definitions.
+ * 
+ * POST /api/process-text   → clean/process extracted text, create session
+ * POST /api/stream-read    → real-time streaming TTS (SSE)
+ * POST /api/stop-reading   → stop active reading stream
+ * GET  /api/session/:id    → get session info
+ * GET  /api/health         → health check
  */
 
 import { Router } from 'express';
-import { processText, generateAudio, getSessionInfo } from './controllers/generateController.js';
+import { processText, streamRead, stopReading, getSession } from './controllers/generateController.js';
 
 const router = Router();
 
-// Process extracted text from PDF (client-side extraction)
 router.post('/process-text', processText);
+router.post('/stream-read', streamRead);
+router.post('/stop-reading', stopReading);
+router.get('/session/:id', getSession);
 
-// Generate audio for a page in a specific language (SSE response)
-router.post('/generate', generateAudio);
-
-// Get session info (pages, cached audio status)
-router.get('/session/:sessionId', getSessionInfo);
+router.get('/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
 export default router;

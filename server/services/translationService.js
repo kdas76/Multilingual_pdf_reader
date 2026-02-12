@@ -1,55 +1,80 @@
 /**
- * translationService.js
- * ─────────────────────
+ * translationService.js — V2
+ * ──────────────────────────
  * Translates text between languages using Google Translate (free).
- * Uses google-translate-api-x (actively maintained fork).
  * 
- * Includes caching to avoid re-translating the same text.
+ * V2 changes:
+ * - Integrates language detection — skips translation if source=target
+ * - Smarter chunked translation for large texts
+ * - Better error handling with retry
  */
 
 import translate from 'google-translate-api-x';
+import { checkTranslationNeeded } from './languageDetector.js';
 
 // ─── Translation Cache ───
-// Key: `${sessionId}_${language}_${pageIndex}`, Value: translated text
 const translationCache = new Map();
 
 /**
+ * Smart translate — detects source language, skips if same as target
+ * @param {string} text - Text to translate
+ * @param {string} targetLang - Target language code ('en', 'hi', 'bn')
+ * @param {string} cacheKey - Optional cache key
+ * @returns {Promise<{text: string, translated: boolean, sourceLang: string}>}
+ */
+export async function smartTranslate(text, targetLang, cacheKey = null) {
+    // Check if translation is needed
+    const check = checkTranslationNeeded(text, targetLang);
+
+    if (!check.needsTranslation) {
+        return {
+            text: text,
+            translated: false,
+            sourceLang: check.sourceLang,
+        };
+    }
+
+    // Translation is needed
+    const translated = await translateText(text, targetLang, cacheKey);
+    return {
+        text: translated,
+        translated: true,
+        sourceLang: check.sourceLang,
+    };
+}
+
+/**
  * Translate text to the target language
- * @param {string} text - English text to translate
- * @param {string} targetLang - Target language code ('hi' for Hindi, 'bn' for Bengali)
- * @param {string} cacheKey - Optional cache key for caching
+ * @param {string} text - Text to translate
+ * @param {string} targetLang - Target language code
+ * @param {string} cacheKey - Optional cache key
  * @returns {Promise<string>} - Translated text
  */
 export async function translateText(text, targetLang, cacheKey = null) {
-    // Don't translate English
-    if (targetLang === 'en') return text;
+    if (targetLang === 'en' && /^[\x00-\x7F\s]*$/.test(text.substring(0, 200))) {
+        return text; // Already English
+    }
 
-    // Check cache first
+    // Check cache
     if (cacheKey && translationCache.has(cacheKey)) {
-        console.log(`  ✅ Cache hit for translation: ${cacheKey}`);
+        console.log(`  ✅ Cache hit: ${cacheKey}`);
         return translationCache.get(cacheKey);
     }
 
     try {
         console.log(`  🌐 Translating to ${targetLang}... (${text.length} chars)`);
 
-        // For long texts, translate in smaller segments to avoid API limits
         const MAX_TRANSLATE_LENGTH = 4500;
 
         if (text.length <= MAX_TRANSLATE_LENGTH) {
             const result = await translate(text, { to: targetLang });
             const translated = result.text;
-
-            // Cache the result
-            if (cacheKey) {
-                translationCache.set(cacheKey, translated);
-            }
-
+            if (cacheKey) translationCache.set(cacheKey, translated);
             return translated;
         }
 
         // Split into sentences and translate in batches
-        const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+        const sentences = text.match(/[^.!?।]+[.!?।]+/g) || [text];
         let translatedParts = [];
         let batch = '';
 
@@ -65,33 +90,26 @@ export async function translateText(text, targetLang, cacheKey = null) {
             }
         }
 
-        // Translate remaining batch
         if (batch.trim()) {
             const result = await translate(batch, { to: targetLang });
             translatedParts.push(result.text);
         }
 
         const fullTranslation = translatedParts.join(' ');
-
-        // Cache the result
-        if (cacheKey) {
-            translationCache.set(cacheKey, fullTranslation);
-        }
-
+        if (cacheKey) translationCache.set(cacheKey, fullTranslation);
         return fullTranslation;
+
     } catch (error) {
         console.error(`  ❌ Translation error:`, error.message);
 
-        // If rate limited, add a small delay and retry once
         if (error.name === 'TooManyRequestsError' || error.code === 429) {
-            console.log('  ⏳ Rate limited, waiting 2 seconds and retrying...');
-            await new Promise(resolve => setTimeout(resolve, 2000));
-
+            console.log('  ⏳ Rate limited, retrying after delay...');
+            await new Promise(r => setTimeout(r, 2000));
             try {
-                const result = await translate(text.substring(0, MAX_TRANSLATE_LENGTH), { to: targetLang });
+                const result = await translate(text.substring(0, 4500), { to: targetLang });
                 return result.text;
-            } catch (retryError) {
-                throw new Error(`Translation failed after retry: ${retryError.message}`);
+            } catch (retryErr) {
+                throw new Error(`Translation failed: ${retryErr.message}`);
             }
         }
 
@@ -108,15 +126,4 @@ export function clearTranslationCache(sessionId) {
             translationCache.delete(key);
         }
     }
-}
-
-/**
- * Get supported languages
- */
-export function getSupportedLanguages() {
-    return [
-        { code: 'en', name: 'English', flag: '🇺🇸' },
-        { code: 'hi', name: 'Hindi', flag: '🇮🇳' },
-        { code: 'bn', name: 'Bengali', flag: '🇧🇩' }
-    ];
 }
