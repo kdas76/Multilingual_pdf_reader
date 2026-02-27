@@ -1,5 +1,32 @@
 import { useState, useRef } from 'react';
-import pdfToText from 'react-pdftotext';
+import { pdfjs } from 'react-pdf';
+
+if (!pdfjs.GlobalWorkerOptions.workerSrc) {
+    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+}
+
+async function extractPdfTextByPage(file) {
+    const arrayBuffer = await file.arrayBuffer();
+    const doc = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+    const pages = [];
+
+    for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
+        const page = await doc.getPage(pageNumber);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+            .map((item) => item.str || '')
+            .join(' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        pages.push(pageText);
+    }
+
+    return {
+        pages,
+        fullText: pages.filter(Boolean).join('\n\n'),
+    };
+}
 
 /**
  * UploadSection Component
@@ -34,16 +61,21 @@ export default function UploadSection({ onTextExtracted, isProcessing }) {
         setExtractionStatus('Extracting text from PDF...');
 
         try {
-            const text = await pdfToText(file);
+            const { pages, fullText } = await extractPdfTextByPage(file);
 
-            if (!text || text.trim().length === 0) {
+            if (!fullText || fullText.trim().length === 0) {
                 setError('Could not extract text. This might be a scanned PDF (image-based).');
                 setExtractionStatus('');
                 return;
             }
 
-            setExtractionStatus(`Extracted ${text.length.toLocaleString()} characters`);
-            onTextExtracted(text, file.name, file);
+            setExtractionStatus(`Extracted ${fullText.length.toLocaleString()} characters from ${pages.length} pages`);
+            onTextExtracted({
+                text: fullText,
+                pages,
+                fileName: file.name,
+                file,
+            });
         } catch (err) {
             console.error('PDF extraction error:', err);
             setError('Failed to read PDF. Please try another file.');

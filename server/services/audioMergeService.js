@@ -73,7 +73,7 @@ export function cleanupChunks(chunkPaths) {
                 fs.unlinkSync(chunkPath);
                 cleaned++;
             }
-        } catch (err) {
+        } catch {
             // Non-critical — log and continue
             console.warn(`  ⚠️ Could not delete chunk: ${path.basename(chunkPath)}`);
         }
@@ -98,7 +98,8 @@ export function cleanupSessionAudio(audioDir, sessionId) {
         if (sessionFiles.length > 0) {
             console.log(`  🧹 Cleaned ${sessionFiles.length} files for session ${sessionId.substring(0, 8)}`);
         }
-    } catch (err) {
+    } catch {
         // Non-critical
     }
 }
+

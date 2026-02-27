@@ -11,12 +11,19 @@
  */
 
 import { Router } from 'express';
-import { processText, streamRead, stopReading, getSession } from './controllers/generateController.js';
+import {
+    processText,
+    streamRead,
+    stopReading,
+    getSession,
+    generateAudiobook,
+} from './controllers/generateController.js';
 
 const router = Router();
 
 router.post('/process-text', processText);
 router.post('/stream-read', streamRead);
+router.post('/generate-book', generateAudiobook);
 router.post('/stop-reading', stopReading);
 router.get('/session/:id', getSession);
 

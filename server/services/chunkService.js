@@ -52,8 +52,6 @@ export function microChunk(text, startOffset = 0) {
         if (shouldSplit && isWord) {
             // Try to end at a sentence boundary
             const endsWithSentence = /[.!?।]\s*$/.test(currentChunk.trimEnd());
-            const nearSentenceEnd = currentWordCount >= MICRO_CHUNK_WORDS * 0.7;
-
             if (endsWithSentence || currentWordCount >= MICRO_CHUNK_WORDS || currentChunk.length >= MICRO_CHUNK_MAX_CHARS) {
                 const trimmed = currentChunk.trim();
                 if (trimmed.length > 0) {

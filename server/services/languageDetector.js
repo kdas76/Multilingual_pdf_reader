@@ -15,12 +15,32 @@ const FRANC_TO_APP = {
     eng: 'en',
     hin: 'hi',
     ben: 'bn',
+    tam: 'ta',
+    tel: 'te',
+    mar: 'mr',
+    guj: 'gu',
+    kan: 'kn',
+    mal: 'ml',
+    pan: 'pa',
+    ori: 'or',
+    asm: 'as',
+    urd: 'ur',
 };
 
 const APP_TO_NAME = {
     en: 'English',
     hi: 'Hindi',
     bn: 'Bengali',
+    ta: 'Tamil',
+    te: 'Telugu',
+    mr: 'Marathi',
+    gu: 'Gujarati',
+    kn: 'Kannada',
+    ml: 'Malayalam',
+    pa: 'Punjabi',
+    or: 'Odia',
+    as: 'Assamese',
+    ur: 'Urdu',
 };
 
 /**

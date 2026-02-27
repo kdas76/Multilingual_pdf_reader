@@ -10,6 +10,22 @@
  * @param {string} rawText - Raw text extracted from PDF
  * @returns {string} - Cleaned text ready for TTS/translation
  */
+function stripControlChars(input) {
+    let cleaned = '';
+    for (const ch of input) {
+        const code = ch.charCodeAt(0);
+        const isBlocked =
+            code <= 8 ||
+            code === 11 ||
+            code === 12 ||
+            (code >= 14 && code <= 31) ||
+            code === 127;
+
+        if (!isBlocked) cleaned += ch;
+    }
+    return cleaned;
+}
+
 export function cleanText(rawText) {
     if (!rawText || typeof rawText !== 'string') return '';
 
@@ -38,7 +54,7 @@ export function cleanText(rawText) {
     text = text.replace(/[–—]/g, '-');
 
     // Remove non-printable characters
-    text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+    text = stripControlChars(text);
 
     // Add natural pauses after paragraphs (helps TTS sound more natural)
     text = text.replace(/\n\n/g, '.\n\n');

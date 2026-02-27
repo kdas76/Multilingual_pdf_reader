@@ -3,13 +3,28 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { config } from 'dotenv';
+import rateLimit from 'express-rate-limit';
 import router from './routes.js';
+
+// Load .env
+config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+// ─── Rate Limiting ───
+const limiter = rateLimit({
+    windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+    max: Number(process.env.RATE_LIMIT_MAX) || 100,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests, please try again later.' },
+});
+app.use('/api', limiter);
 
 // ─── Middleware ───
 app.use(cors({
@@ -30,13 +45,8 @@ app.use('/audio', express.static(audioDir));
 // ─── API Routes ───
 app.use('/api', router);
 
-// ─── Health Check ───
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
 // ─── Error Handler ───
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
     console.error('Server Error:', err.message);
     res.status(500).json({ error: 'Internal server error', message: err.message });
 });

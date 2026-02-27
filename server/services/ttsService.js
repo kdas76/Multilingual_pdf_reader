@@ -1,76 +1,82 @@
-/**
- * ttsService.js — V2
- * ───────────────────
- * Converts text to speech using Microsoft Edge's neural voices.
- * 
- * V2 changes:
- * - Subtitle generation (word-level timing data) for text highlighting
- * - Indian Bengali voice (bn-IN-TanishaaNeural) instead of Bangladeshi
- * - Tuned voice parameters for natural, pleasant sound
- * - Returns both audio path AND word timing data
- */
-
 import { EdgeTTS } from 'node-edge-tts';
 import path from 'path';
 import fs from 'fs';
 
-// ─── Voice Configuration (tuned for natural sound) ───
 const VOICE_MAP = {
-    en: {
-        voice: 'en-US-JennyNeural',
-        lang: 'en-US',
-        rate: '-5%',
-        pitch: '+2Hz',
-        volume: '+5%',
-    },
-    hi: {
-        voice: 'hi-IN-SwaraNeural',
-        lang: 'hi-IN',
-        rate: '-10%',
-        pitch: '+0Hz',
-        volume: '+5%',
-    },
-    bn: {
-        voice: 'bn-IN-TanishaaNeural',  // Indian Bengali, not Bangladeshi
-        lang: 'bn-IN',
-        rate: '-10%',
-        pitch: '+0Hz',
-        volume: '+5%',
-    },
+    en: { lang: 'en-US', female: 'en-US-JennyNeural', male: 'en-US-GuyNeural' },
+    hi: { lang: 'hi-IN', female: 'hi-IN-SwaraNeural', male: 'hi-IN-MadhurNeural' },
+    bn: { lang: 'bn-IN', female: 'bn-IN-TanishaaNeural', male: 'bn-IN-BashkarNeural' },
+    ta: { lang: 'ta-IN', female: 'ta-IN-PallaviNeural', male: 'ta-IN-ValluvarNeural' },
+    te: { lang: 'te-IN', female: 'te-IN-ShrutiNeural', male: 'te-IN-MohanNeural' },
+    mr: { lang: 'mr-IN', female: 'mr-IN-AarohiNeural', male: 'mr-IN-ManoharNeural' },
+    gu: { lang: 'gu-IN', female: 'gu-IN-DhwaniNeural', male: 'gu-IN-NiranjanNeural' },
+    kn: { lang: 'kn-IN', female: 'kn-IN-SapnaNeural', male: 'kn-IN-GaganNeural' },
+    ml: { lang: 'ml-IN', female: 'ml-IN-SobhanaNeural', male: 'ml-IN-MidhunNeural' },
+    pa: { lang: 'pa-IN', female: 'pa-IN-GurleenNeural', male: 'pa-IN-VikasNeural' },
+    or: { lang: 'or-IN', female: 'or-IN-RupashreeNeural', male: 'or-IN-KishoreNeural' },
+    as: { lang: 'as-IN', female: 'as-IN-YashicaNeural', male: 'as-IN-PrabhatNeural' },
+    ur: { lang: 'ur-IN', female: 'ur-IN-GulNeural', male: 'ur-IN-SalmanNeural' },
 };
 
-/**
- * Generate speech with word-level timing (subtitles)
- * @param {string} text - Text to convert to speech
- * @param {string} language - Language code ('en', 'hi', 'bn')
- * @param {string} outputPath - Full path for the output audio file
- * @returns {Promise<{audioPath: string, wordTimings: Array}>}
- */
-export async function generateSpeechWithTimings(text, language, outputPath) {
+function clampSpeed(speed) {
+    const numeric = Number(speed);
+    if (!Number.isFinite(numeric)) return 1;
+    return Math.max(0.5, Math.min(2, numeric));
+}
+
+function speedToRate(speed) {
+    const clamped = clampSpeed(speed);
+    const percent = Math.round((clamped - 1) * 100);
+    return `${percent >= 0 ? '+' : ''}${percent}%`;
+}
+
+function getVoiceConfig(language, voiceGender = 'female', speed = 1) {
+    const voicePack = VOICE_MAP[language] || VOICE_MAP.en;
+    const selectedVoice = voiceGender === 'male' ? voicePack.male : voicePack.female;
+
+    return {
+        voice: selectedVoice || voicePack.female || VOICE_MAP.en.female,
+        lang: voicePack.lang || 'en-US',
+        rate: speedToRate(speed),
+        pitch: '+0Hz',
+        volume: '+5%',
+    };
+}
+
+async function synthesizeToFile(text, outputPath, config) {
+    const tts = new EdgeTTS({
+        voice: config.voice,
+        lang: config.lang,
+        outputFormat: 'audio-24khz-96kbitrate-mono-mp3',
+        saveSubtitles: true,
+        rate: config.rate,
+        pitch: config.pitch,
+        volume: config.volume,
+        timeout: 30000,
+    });
+
+    await tts.ttsPromise(text, outputPath);
+}
+
+export async function generateSpeechWithTimings(text, language, outputPath, options = {}) {
     if (!text || text.trim().length === 0) {
         throw new Error('Empty text provided for TTS');
     }
 
-    const config = VOICE_MAP[language];
-    if (!config) {
-        throw new Error(`Unsupported language: ${language}`);
-    }
+    const config = getVoiceConfig(language, options.voiceGender, options.speed);
 
     try {
-        const tts = new EdgeTTS({
-            voice: config.voice,
-            lang: config.lang,
-            outputFormat: 'audio-24khz-96kbitrate-mono-mp3',
-            saveSubtitles: true,  // Generate word-level timing JSON
-            rate: config.rate,
-            pitch: config.pitch,
-            volume: config.volume,
-            timeout: 30000,
-        });
+        try {
+            await synthesizeToFile(text, outputPath, config);
+        } catch (primaryError) {
+            if (language !== 'en') {
+                const fallbackConfig = getVoiceConfig('en', 'female', options.speed);
+                await synthesizeToFile(text, outputPath, fallbackConfig);
+            } else {
+                throw primaryError;
+            }
+        }
 
-        await tts.ttsPromise(text, outputPath);
-
-        // Read subtitle timing data (saved as JSON with same name as audio)
         const subtitlePath = outputPath.replace(/\.mp3$/, '.json');
         let wordTimings = [];
 
@@ -78,55 +84,60 @@ export async function generateSpeechWithTimings(text, language, outputPath) {
             try {
                 const subtitleData = fs.readFileSync(subtitlePath, 'utf-8');
                 wordTimings = JSON.parse(subtitleData);
-                // Clean up subtitle file
                 fs.unlinkSync(subtitlePath);
-            } catch (e) {
-                console.warn('  ⚠️ Could not parse subtitle data');
+            } catch {
+                console.warn('Could not parse subtitle data');
             }
         }
 
-        console.log(`  🔊 Generated: ${path.basename(outputPath)} (${language}, ${wordTimings.length} words)`);
+        console.log(`Generated: ${path.basename(outputPath)} (${language}, ${wordTimings.length} words)`);
 
         return { audioPath: outputPath, wordTimings };
     } catch (error) {
-        console.error(`  ❌ TTS Error (${language}):`, error.message);
+        console.error(`TTS Error (${language}):`, error.message);
         throw new Error(`Speech generation failed for ${language}: ${error.message}`);
     }
 }
 
-/**
- * Generate speech (simple, without timings — for backward compat)
- */
-export async function generateSpeech(text, language, outputPath) {
-    const result = await generateSpeechWithTimings(text, language, outputPath);
+export async function generateSpeech(text, language, outputPath, options = {}) {
+    const result = await generateSpeechWithTimings(text, language, outputPath, options);
     return result.audioPath;
 }
 
-/**
- * Generate speech for a chunk with retry logic
- */
-export async function generateChunkWithTimings(text, language, outputPath, retries = 2) {
+export async function generateChunkWithTimings(
+    text,
+    language,
+    outputPath,
+    options = {},
+    retries = 2
+) {
     for (let attempt = 1; attempt <= retries; attempt++) {
         try {
-            return await generateSpeechWithTimings(text, language, outputPath);
+            return await generateSpeechWithTimings(text, language, outputPath, options);
         } catch (error) {
             if (attempt < retries) {
-                console.log(`  ⚠️ Retry ${attempt}/${retries} for TTS chunk...`);
-                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                console.log(`Retry ${attempt}/${retries} for TTS chunk...`);
+                await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
             } else {
                 throw error;
             }
         }
     }
+
+    throw new Error('TTS retries exhausted');
 }
 
-/**
- * Get available voices for display
- */
 export function getAvailableVoices() {
-    return Object.entries(VOICE_MAP).map(([lang, config]) => ({
-        language: lang,
-        voice: config.voice,
-        label: lang === 'en' ? 'English' : lang === 'hi' ? 'Hindi' : 'Bengali (Indian)',
-    }));
+    return Object.entries(VOICE_MAP).flatMap(([lang, config]) => ([
+        {
+            language: lang,
+            gender: 'female',
+            voice: config.female,
+        },
+        {
+            language: lang,
+            gender: 'male',
+            voice: config.male,
+        },
+    ]));
 }
